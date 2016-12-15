@@ -21,6 +21,8 @@ limitations under the License. */
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "ThreadPool.h"
 #include "Queue.h"
@@ -49,23 +51,35 @@ public:
     if (meanValues_) {
       free(meanValues_);
     }
+    if (stdValues_) {
+      free(stdValues_);
+    }
+    /*
+    if (eigval_) {
+      free(eigval_);
+    }
+    if (eigvec_) {
+      free(eigvec_);
+    }*/
   }
 
   /**
-   * @brief Start multi-threads to transform a list of input image string.
-   *        This function reads an image from the specified buffer in the
-   *        memory.
-   * @param data   Data is the specified image buffer in the memory.
+   * @brief Start multi-threads to transform a list of input data.
+   * The processed data will be saved in Queue of prefetchFull_.
+   *
+   * @param data   Data containing the image string to be transformed.
    * @param label  The label of input image.
    */
   void processImgString(std::vector<std::string>& data, int* labels);
 
   /**
-   * @brief Start multi-threads to transform a list of input image file.
-   *        This function loads image from the the specified file.
-   * @param data   Data is an list of image file.
+   * @brief Start multi-threads to transform a list of input data.
+   * The processed data will be saved in Queue of prefetchFull_.
+   *
+   * @param data   Data containing the image string to be transformed.
    * @param label  The label of input image.
    */
+
   void processImgFile(std::vector<std::string>& data, int* labels);
 
   /**
@@ -85,26 +99,85 @@ public:
   void imsave(std::string filename, cv::Mat& im) { cv::imwrite(filename, im); }
 
   /**
-   * @brief Decode the image buffer, then calls transform() function.
+   * @brief Decode the image string, then calls transform() function.
    *
-   * @param src  The input image buffer.
-   * @param size The length of string buffer.
+   * @param src  The input image string.
+   * @param size The length of string.
    * @param trg  trg is used to save the transformed data.
    */
   void transfromString(const char* src, const int size, float* trg);
-
-  /**
-   * @brief Load image form image file, then calls transform() function.
-   *
-   * @param src  The input image file.
-   * @param trg  trg is used to save the transformed data.
-   */
   void transfromFile(std::string imgFile, float* trg);
 
   /**
    * @brief Return the transformed data and its label.
    */
   void obtain(float* data, int* label);
+
+  /**
+   * @brief Scales the smaller edge to size
+   *
+   * @param im     Input image to be resized
+   * @param size   length of the shorter edge
+   * 
+   * @return       image resized
+   */
+  cv::Mat scale(cv::Mat& im, int size);
+
+  /**
+   * @brief Resized with shorter side randomly sampled from [minSize, maxSize] (ResNet-style)
+   *
+   * @param im     Input image to be resized
+   * @param minSize   min length of the shorter edge
+   * @param maxSize   max length of the shorter edge
+   * 
+   * @return       image resized
+   */
+  cv::Mat scale(cv::Mat& im, int minSize, int maxSize);
+
+  /**
+   * @brief Random crop with size 8%-100% and aspect ratio 3/4 - 4/3 (Inception-style)
+   *
+   * @param im     Input image 
+   * @param size   crop size
+   * 
+   * @return       image resized
+   */
+  cv::Mat RandomSizedCrop(cv::Mat& im, int size);
+
+
+  /**
+   * @brief color random jitter
+   *
+   * @param im  Input image
+   * @param 
+   * @return       status
+   */
+  int random_jitter(cv::Mat& img, float saturation_jitter_ratio, 
+                float brightness_jitter_ratio,
+                float contrast_jitter_ratio);
+  void saturation_jitter(cv::Mat& cv_img, float jitter_range);
+  void brightness_jitter(cv::Mat& cv_img, float jitter_range);
+  void contrast_jitter(cv::Mat& cv_img, float jitter_range);
+  void color_normalization(cv::Mat& cv_img, float* mean, float* std);
+
+  /**
+    * @ brief crop and transform mat to buf
+    * @ param  im         Input image
+    * @ param  crop_size  crop size
+    * @ param  h_offset   offset of height
+    * @ param  w_offset   offset of width
+    * @ param  flip       flip or not
+    *
+    * @ param  dst        output image buf
+    */
+  void crop(cv::Mat& im, float* dst, int crop_h, int crop_w, int h_offset, int w_offset, bool flip);
+
+  void preprocess(cv::Mat& im, float* dst);
+  cv::Mat convertTotorch(cv::Mat& im);
+
+  void lighting(cv::Mat& im, float alphastd, const cv::Mat& eigval, const cv::Mat& eigvec);
+
+
 
 private:
   int isTest_;
@@ -121,6 +194,19 @@ private:
   float scale_;
   int imgPixels_;
   float* meanValues_;
+  float* stdValues_;
+  
+  /* for random jitter */
+  float brightness_jitter_ratio_;
+  float saturation_jitter_ratio_;
+  float contrast_jitter_ratio_;
+
+  /* for pca */
+  cv::Mat eigval_;
+  cv::Mat eigvec_;
+
+
+  FILE* rng_;
 
   /**
    * Initialize the mean values.
@@ -136,13 +222,17 @@ private:
    * A uniformly random integer value from ({min, min + 1, ..., max}).
    */
   int Rand(int min, int max);
+  float Rand(float min, float max);
+  int Rand(int max);
 
   typedef std::pair<float*, int> DataType;
   typedef std::shared_ptr<DataType> DataTypePtr;
   std::vector<DataTypePtr> prefetch_;
   ThreadPool threadPool_;
+  // std::unique_ptr<SyncThreadPool> syncThreadPool_;
   std::vector<std::future<DataTypePtr>> results_;
-  BlockingQueue<DataTypePtr> prefetchQueue_;
+  BlockingQueue<DataTypePtr> prefetchFree_;
+  BlockingQueue<DataTypePtr> prefetchFull_;
 };  // class DataTransformer
 
 #endif  // DATATRANSFORMER_H_
