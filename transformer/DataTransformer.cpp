@@ -44,7 +44,7 @@ DataTransformer::DataTransformer(int threadNum,
   isChannelMean_ = isChannelMean;
   isEltMean_ = isEltMean;
   meanValues_ = NULL;
-  loadMean(meanValues);
+  //loadMean(meanValues);
   stdValues_ = NULL;
 
   imgPixels_ = cropHeight * cropWidth * (isColor_ ? 3 : 1);
@@ -65,22 +65,31 @@ DataTransformer::DataTransformer(int threadNum,
   contrast_jitter_ratio_ = 0.4;
   if (!stdValues_) {
     stdValues_ = new float[3];
-    stdValues_[0] = 0.229;
+    stdValues_[2] = 0.229;
     stdValues_[1] = 0.224;
-    stdValues_[2] = 0.225;
+    stdValues_[0] = 0.225;
   }
   if (!meanValues_) {
     meanValues_ = new float[3];
-    meanValues_[0] = 0.485;
+    meanValues_[2] = 0.485;
     meanValues_[1] = 0.456;
-    meanValues_[2] = 0.406;
+    meanValues_[0] = 0.406;
   }
+
+  /*
   float eigvec_tmp[3 * 3] = {-0.5675, 0.7192, 0.4009,
                              -0.5808, -0.0045, -0.8140,
-                             -0.5836, -0.6948, 0.4203};
-  float eigval_tmp[3] = {0.2175, 0.0188, 0.0045};
-  eigval_ = cv::Mat(3, 1, CV_32FC1, eigval_tmp);
-  eigvec_ = cv::Mat(3, 3, CV_32FC1, eigvec_tmp);
+                             -0.5836, -0.6948, 0.4203};*/
+
+  float eigvec_tmp[3 * 3] = {-0.5836, -0.6948, 0.4203,
+                             -0.5808, -0.0045, -0.8140,
+                             -0.5675, 0.7192, 0.4009};
+  // float eigval_tmp[3] = {0.2175, 0.0188, 0.0045};
+  float eigval_tmp[3] = {0.0045, 0.0188, 0.2175};
+  cv::Mat eigval_t(3, 1, CV_32FC1, eigval_tmp);
+  cv::Mat eigvec_t(3, 3, CV_32FC1, eigvec_tmp);
+  eigval_=eigval_t.clone();
+  eigvec_=eigvec_t.clone();
 }
 
 void DataTransformer::loadMean(float* values) {
@@ -100,7 +109,7 @@ void DataTransformer::transfromFile(std::string imgFile, float* trg) {
       LOG(ERROR) << "Could not decode image";
       LOG(ERROR) << im.channels() << " " << im.rows << " " << im.cols;
     }
-    this->transform(im, trg);
+    this->preprocess(im, trg);
   } catch (cv::Exception& e) {
     LOG(ERROR) << "Caught exception in cv::imdecode " << e.msg;
   }
@@ -117,7 +126,7 @@ void DataTransformer::transfromString(const char* src,
       LOG(ERROR) << "Could not decode image";
       LOG(ERROR) << im.channels() << " " << im.rows << " " << im.cols;
     }
-    this->transform(im, trg);
+    this->preprocess(im, trg);
   } catch (cv::Exception& e) {
     LOG(ERROR) << "Caught exception in cv::imdecode " << e.msg;
   }
@@ -193,7 +202,7 @@ cv::Mat DataTransformer::RandomSizedCrop(cv::Mat& im, int size) {
             int h1 = Rand(imgHeight - h);
             int w1 = Rand(imgWidth - w);
 
-            cv::Rect roi(w1, h1, h, w);
+            cv::Rect roi(w1, h1, w, h);
             cv_cropped_img = im(roi);
             break;
         }
@@ -255,14 +264,14 @@ void DataTransformer::crop(cv::Mat& im, float* dst, int crop_h, int crop_w, int 
   int width = im.cols;
   int top_index;
   for (int h = 0; h < crop_h; ++h) {
-    const uchar* ptr = im.ptr<uchar>(h);
+    const float* ptr = im.ptr<float>(h);
     int img_index = 0;
     for (int w = 0; w < crop_w; ++w) {
       for (int c = 0; c < im.channels(); ++c) {
         if (flip) {
-          top_index = (c * height + h) * width + width - 1 - w;
+          top_index = (c * height + h + h_offset) * width + width - 1 - w - w_offset;
         } else {
-          top_index = (c * height + h) * width + w;
+          top_index = (c * height + h + h_offset) * width + w + w_offset;
         }
         float pixel = static_cast<float>(ptr[img_index++]);
         dst[top_index] = pixel;
@@ -299,12 +308,17 @@ void DataTransformer::lighting(cv::Mat& im, float alphastd, const cv::Mat& eigva
   for (int i = 0; i < 3; i++) {
     alpha_t.copyTo(alpha.row(i));
   }
+  /*
+  LOG(ERROR) << "alpha_t:" << alpha_t.at<float>(0, 0);
+  LOG(ERROR) << "eigval:" << eigval.at<float>(0, 0);
+  LOG(ERROR) << "eigvec:" << eigvec.at<float>(0, 0);*/
   alpha = alpha.mul(eigvec);
   /* alpha: 3 * 3    eigval: 3 * 1 */
   alpha = alpha * eigval;
   std::vector<cv::Mat> ch;
   cv::split(im, ch);
   for (int i = 0; i < 3; i++) {
+    //LOG(ERROR) << "alpha:" << alpha.at<float>(i, 0);
     ch[i] += alpha.at<float>(i, 0);
   }
   cv::merge(ch, im);
@@ -318,12 +332,21 @@ void DataTransformer::preprocess(cv::Mat& cvImgOri, float* dst) {
 
   if (!isTest_) {
     cv::Mat cv_cropped_img = RandomSizedCrop(cvImgOri, cropHeight_);
+    //LOG(ERROR) << "RandomSizedCrop done";
     random_jitter(cv_cropped_img, saturation_jitter_ratio_, brightness_jitter_ratio_, 
       contrast_jitter_ratio_);
+    //LOG(ERROR) << "random_jitter done";
+    cv::imwrite("tmp_crop.jpg", cv_cropped_img);
     cv_cropped_img = convertTotorch(cv_cropped_img);
+    cv::imwrite("tmp_crop_torch.jpg", cv_cropped_img * 255);
     lighting(cv_cropped_img, 0.1, eigval_, eigvec_);
+    cv::imwrite("tmp_crop_torch_lighting.jpg", cv_cropped_img * 255);
     color_normalization(cv_cropped_img, meanValues_, stdValues_);
+    cv::imwrite("tmp_crop_torch_color_normalization.jpg", cv_cropped_img * 255);
+    //LOG(ERROR) << "color_normalization done";
     crop(cv_cropped_img, dst, cropHeight_, cropHeight_, 0, 0, doMirror);
+
+    //LOG(ERROR) << "crop done";
   } else {
     cv::Mat cv_cropped_img;
     if (imgSize_ > 0) {
