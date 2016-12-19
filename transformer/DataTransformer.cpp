@@ -269,15 +269,20 @@ void DataTransformer::crop(cv::Mat& im, float* dst, int crop_h, int crop_w, int 
   int height = im.rows;
   int width = im.cols;
   int top_index;
+  cv::Mat im_crop = im;
+  if (h_offset > 0 || w_offset > 0) {
+    cv::Rect roi(w_offset, h_offset, crop_w, crop_h);
+    cv::Mat im_crop = im(roi);
+  }
   for (int h = 0; h < crop_h; ++h) {
-    const float* ptr = im.ptr<float>(h);
+    const float* ptr = im_crop.ptr<float>(h);
     int img_index = 0;
     for (int w = 0; w < crop_w; ++w) {
-      for (int c = 0; c < im.channels(); ++c) {
+      for (int c = 0; c < im_crop.channels(); ++c) {
         if (flip) {
-          top_index = (c * height + h + h_offset) * width + width - 1 - w - w_offset;
+          top_index = (c * height + h) * width + width - 1 - w;
         } else {
-          top_index = (c * height + h + h_offset) * width + w + w_offset;
+          top_index = (c * height + h) * width + w;
         }
         float pixel = static_cast<float>(ptr[img_index++]);
         dst[top_index] = pixel;
@@ -355,13 +360,16 @@ void DataTransformer::preprocess(cv::Mat& cvImgOri, float* dst) {
     //LOG(ERROR) << "crop done";
   } else {
     cv::Mat cv_cropped_img;
+    imgSize_ = 256;
     if (imgSize_ > 0) {
       cv_cropped_img = scale(cvImgOri, imgSize_);
       cv_cropped_img = convertTotorch(cv_cropped_img);
       color_normalization(cv_cropped_img, meanValues_, stdValues_);
-      crop(cv_cropped_img, dst, cropHeight_, cropWidth_, (cv_cropped_img.rows - cropHeight_) / 2, 
-        (cv_cropped_img.cols - cropWidth_) / 2, false);
-    } 
+      cv::Rect roi((cv_cropped_img.cols - cropWidth_) / 2, (cv_cropped_img.rows - cropHeight_) / 2,
+        cropWidth_, cropHeight_);
+      cv_cropped_img = cv_cropped_img(roi);
+      crop(cv_cropped_img, dst, cropHeight_, cropWidth_, 0, 0, false);
+    }
   }
 }
 
