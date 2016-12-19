@@ -89,6 +89,7 @@ public:
     }
     labels_ = (int*)PyArray_DATA(reinterpret_cast<PyArrayObject*>(pylabel));
     tfhandlerPtr_->processImgString(input_, labels_);
+    //tfhandlerPtr_->processImgFile(input_, labels_);
   }
 
   /**

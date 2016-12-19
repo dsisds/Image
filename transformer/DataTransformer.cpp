@@ -204,12 +204,18 @@ cv::Mat DataTransformer::RandomSizedCrop(cv::Mat& im, int size) {
 
             cv::Rect roi(w1, h1, w, h);
             cv_cropped_img = im(roi);
+            cv::resize(cv_cropped_img, cv_cropped_img, cv::Size(size, size));
+            return cv_cropped_img;
             break;
         }
         attempt++;
     }
-    cv::resize(cv_cropped_img, cv_cropped_img, cv::Size(size, size));
-    return cv_cropped_img; 
+    cv_cropped_img = scale(cv_cropped_img, size);
+    //cv::resize(cv_cropped_img, cv_cropped_img, cv::Size(size, size));
+    int hoff = int((cv_cropped_img.rows - size) / 2);
+    int woff = int((cv_cropped_img.cols - size) / 2);
+    cv::Rect roi(woff, hoff, woff + size, hoff + size);
+    return cv_cropped_img(roi); 
 }
 
 int DataTransformer::random_jitter(cv::Mat& cv_img, float saturation_range, float brightness_range,
@@ -303,7 +309,7 @@ void DataTransformer::lighting(cv::Mat& im, float alphastd, const cv::Mat& eigva
   }
   cv::Mat alpha_t(1, 3, CV_32FC1);
   cv::RNG rnger(cv::getTickCount());
-  rnger.fill(alpha_t, cv::RNG::UNIFORM, cv::Scalar::all(0.), cv::Scalar::all(alphastd));
+  rnger.fill(alpha_t, cv::RNG::NORMAL, cv::Scalar::all(0.), cv::Scalar::all(alphastd));
   cv::Mat alpha(3, 3, CV_32FC1);
   for (int i = 0; i < 3; i++) {
     alpha_t.copyTo(alpha.row(i));
@@ -336,13 +342,13 @@ void DataTransformer::preprocess(cv::Mat& cvImgOri, float* dst) {
     random_jitter(cv_cropped_img, saturation_jitter_ratio_, brightness_jitter_ratio_, 
       contrast_jitter_ratio_);
     //LOG(ERROR) << "random_jitter done";
-    cv::imwrite("tmp_crop.jpg", cv_cropped_img);
+    //cv::imwrite("tmp_crop.jpg", cv_cropped_img);
     cv_cropped_img = convertTotorch(cv_cropped_img);
-    cv::imwrite("tmp_crop_torch.jpg", cv_cropped_img * 255);
+    //cv::imwrite("tmp_crop_torch.jpg", cv_cropped_img * 255);
     lighting(cv_cropped_img, 0.1, eigval_, eigvec_);
-    cv::imwrite("tmp_crop_torch_lighting.jpg", cv_cropped_img * 255);
+    //cv::imwrite("tmp_crop_torch_lighting.jpg", cv_cropped_img * 255);
     color_normalization(cv_cropped_img, meanValues_, stdValues_);
-    cv::imwrite("tmp_crop_torch_color_normalization.jpg", cv_cropped_img * 255);
+    //cv::imwrite("tmp_crop_torch_color_normalization.jpg", cv_cropped_img * 255);
     //LOG(ERROR) << "color_normalization done";
     crop(cv_cropped_img, dst, cropHeight_, cropHeight_, 0, 0, doMirror);
 
