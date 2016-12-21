@@ -188,8 +188,10 @@ cv::Mat DataTransformer::RandomSizedCrop(cv::Mat& im, int size) {
     while (attempt < 10) {
         int area = imgHeight * imgWidth;
         float targetArea = Rand(float(0.08), float(1.0)) * area;
+        //targetArea = 0.8 * area;
 
         float aspectRatio = Rand(0.75, float(4) / 3);
+        //aspectRatio = 0.75;
         int w = int(sqrt(targetArea * aspectRatio));
         int h = int(sqrt(targetArea / aspectRatio));
 
@@ -201,10 +203,10 @@ cv::Mat DataTransformer::RandomSizedCrop(cv::Mat& im, int size) {
         if (h < imgHeight && w < imgWidth) {
             int h1 = Rand(imgHeight - h);
             int w1 = Rand(imgWidth - w);
-
             cv::Rect roi(w1, h1, w, h);
             cv_cropped_img = im(roi);
             cv::resize(cv_cropped_img, cv_cropped_img, cv::Size(size, size));
+
             return cv_cropped_img;
             break;
         }
@@ -214,7 +216,7 @@ cv::Mat DataTransformer::RandomSizedCrop(cv::Mat& im, int size) {
     //cv::resize(cv_cropped_img, cv_cropped_img, cv::Size(size, size));
     int hoff = int((cv_cropped_img.rows - size) / 2);
     int woff = int((cv_cropped_img.cols - size) / 2);
-    cv::Rect roi(woff, hoff, woff + size, hoff + size);
+    cv::Rect roi(woff, hoff, size, size);
     return cv_cropped_img(roi); 
 }
 
